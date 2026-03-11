@@ -11,35 +11,29 @@ SESSION = os.environ.get("SESSION", "")
 
 client = TelegramClient(StringSession(SESSION), API_ID, API_HASH)
 
-async def keep_online_hardcore():
+async def keep_online():
+    # Используем connect вместо start, чтобы не было запроса телефона в пустоту
     await client.connect()
+    
+    # Проверяем, авторизованы ли мы по строке SESSION
     if not await client.is_user_authorized():
-        print("Сессия невалидна!")
+        print("❌ ОШИБКА: SESSION не подходит или пуста!")
+        print("Скрипт не может спросить телефон на сервере.")
+        print("Пожалуйста, получи новую SESSION через get_session.py и вставь её в настройки Render.")
         return
 
-    print("Режим 'Бетонный онлайн' запущен...")
-    
+    print("✅ Авторизация успешна! Держим онлайн...")
     while True:
         try:
-            # 1. Основной сигнал онлайна
+            # Тот самый "хардкорный" метод с диалогами
             await client(functions.account.UpdateStatusRequest(offline=False))
-            
-            # 2. Имитация открытия списка чатов (очень важно!)
-            # Запрашиваем только 1 последний диалог, чтобы не нагружать сеть
             await client(functions.messages.GetDialogsRequest(
-                offset_date=None,
-                offset_id=0,
-                offset_peer=types.InputPeerEmpty(),
-                limit=1,
-                hash=0
+                offset_date=None, offset_id=0, 
+                offset_peer=types.InputPeerEmpty(), limit=1, hash=0
             ))
-
-            # 3. Случайная пауза, чтобы не выглядеть как робот
-            wait_time = random.randint(15, 25)
-            await asyncio.sleep(wait_time)
-            
+            await asyncio.sleep(random.randint(15, 25))
         except Exception as e:
-            print(f"Ошибка активности: {e}")
+            print(f"Ошибка: {e}")
             await asyncio.sleep(30)
 
 async def handle(request):
@@ -59,3 +53,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
