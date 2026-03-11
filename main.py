@@ -1,61 +1,61 @@
 import asyncio
 import os
-import sys
-from telethon import TelegramClient
+import random
+from telethon import TelegramClient, functions, types
 from telethon.sessions import StringSession
-from telethon.tl.functions.account import UpdateStatusRequest
 from aiohttp import web
 
-API_ID = os.environ.get("API_ID")
-API_HASH = os.environ.get("API_HASH")
-SESSION = os.environ.get("SESSION")
+API_ID = int(os.environ.get("API_ID", 0))
+API_HASH = os.environ.get("API_HASH", "")
+SESSION = os.environ.get("SESSION", "")
 
-if not API_ID or not API_HASH or not SESSION:
-    print("❌ ОШИБКА: Не заполнены API_ID, API_HASH или SESSION!")
-    sys.exit(1)
+client = TelegramClient(StringSession(SESSION), API_ID, API_HASH)
 
-client = TelegramClient(StringSession(SESSION), int(API_ID), API_HASH)
+async def keep_online_hardcore():
+    await client.connect()
+    if not await client.is_user_authorized():
+        print("Сессия невалидна!")
+        return
 
-async def ping_online():
-    """Фоновая задача, которая регулярно бьет в API"""
+    print("Режим 'Бетонный онлайн' запущен...")
+    
     while True:
         try:
-            if client.is_connected():
-                # Отправляем статус "в сети"
-                await client(UpdateStatusRequest(offline=False))
+            # 1. Основной сигнал онлайна
+            await client(functions.account.UpdateStatusRequest(offline=False))
+            
+            # 2. Имитация открытия списка чатов (очень важно!)
+            # Запрашиваем только 1 последний диалог, чтобы не нагружать сеть
+            await client(functions.messages.GetDialogsRequest(
+                offset_date=None,
+                offset_id=0,
+                offset_peer=types.InputPeerEmpty(),
+                limit=1,
+                hash=0
+            ))
+
+            # 3. Случайная пауза, чтобы не выглядеть как робот
+            wait_time = random.randint(15, 25)
+            await asyncio.sleep(wait_time)
+            
         except Exception as e:
-            print(f"Ошибка пинга: {e}")
-        # Пингуем каждые 15 секунд для надежности
-        await asyncio.sleep(15)
+            print(f"Ошибка активности: {e}")
+            await asyncio.sleep(30)
 
 async def handle(request):
-    return web.Response(text="Сервер работает, онлайн удерживается.")
+    return web.Response(text="Online script is running...")
 
 async def main():
-    # 1. Запускаем веб-сервер для Render
+    # Запуск веб-сервера для Render
     app = web.Application()
     app.router.add_get('/', handle)
     runner = web.AppRunner(app)
     await runner.setup()
     port = int(os.environ.get("PORT", 8080))
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-    print("🌐 Веб-сервер запущен!")
+    await web.TCPSite(runner, '0.0.0.0', port).start()
 
-    # 2. Подключаемся к Telegram
-    await client.connect()
-    if not await client.is_user_authorized():
-        print("❌ ОШИБКА: Сессия недействительна!")
-        return
-
-    # 3. Запускаем параллельную задачу пинга (она будет работать в фоне)
-    asyncio.create_task(ping_online())
-
-    # 4. САМОЕ ВАЖНОЕ: Говорим библиотеке активно "слушать" сервер.
-    # Это действие держит сокет открытым, и Telegram видит, что приложение "запущено".
-    print("✅ Успешная авторизация! Режим вечного онлайна активирован.")
-    await client.run_until_disconnected()
+    # Запускаем цикл активности
+    await keep_online_hardcore()
 
 if __name__ == "__main__":
-    # Запуск для современных версий Python
     asyncio.run(main())
