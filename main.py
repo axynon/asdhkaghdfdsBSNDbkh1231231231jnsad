@@ -1,33 +1,51 @@
-import os
 import asyncio
+import os
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.functions.updates import GetStateRequest
+from telethon.tl.functions.account import UpdateStatusRequest
+from aiohttp import web
 
-api_id = int(os.environ.get("API_ID"))
-api_hash = os.environ.get("API_HASH")
-session_string = os.environ.get("SESSION")
+# Получаем данные из переменных окружения
+API_ID = int(os.environ.get("API_ID", 0))
+API_HASH = os.environ.get("API_HASH", "")
+SESSION = os.environ.get("SESSION", "")
 
-client = TelegramClient(StringSession(session_string), api_id, api_hash)
+# Создаем клиента (но пока не запускаем цикл)
+client = TelegramClient(StringSession(SESSION), API_ID, API_HASH)
 
 async def keep_online():
+    await client.start()
+    print("Вечный онлайн успешно запущен!")
     while True:
         try:
-            if not client.is_connected():
-                print("Connecting...")
-                await client.connect()
-
-            await client(GetStateRequest())
-            print("Still online")
-
+            # Статус "Online"
+            await client(UpdateStatusRequest(offline=False))
+            await asyncio.sleep(300)
         except Exception as e:
-            print("Error:", e)
+            print(f"Ошибка в ТГ: {e}")
+            await asyncio.sleep(60)
 
-        await asyncio.sleep(60)
+async def handle(request):
+    return web.Response(text="Бот активен и держит онлайн!")
+
+async def web_server():
+    app = web.Application()
+    app.router.add_get('/', handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"Веб-сервер запущен на порту {port}")
 
 async def main():
-    await client.start()
-    print("Client started")
-    await keep_online()
+    # Запускаем всё внутри одного асинхронного контекста
+    await asyncio.gather(
+        web_server(),
+        keep_online()
+    )
 
-asyncio.run(main())
+if __name__ == "__main__":
+    # Правильный запуск для новых версий Python
+    asyncio.run(main())
+    
