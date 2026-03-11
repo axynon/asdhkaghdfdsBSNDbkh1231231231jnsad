@@ -1,68 +1,72 @@
 import asyncio
 import os
 import random
-from telethon import TelegramClient, events, functions, types
+from telethon import TelegramClient, functions, types
 from telethon.sessions import StringSession
 from aiohttp import web
 
-# Данные из Render
+# Берем данные из переменных Render
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 SESSION = os.environ.get("SESSION", "")
 
 client = TelegramClient(StringSession(SESSION), API_ID, API_HASH)
 
-# 1. ОБЯЗАТЕЛЬНО: Слушаем любые события (это открывает постоянный поток данных)
-@client.on(events.NewMessage)
-async def handler(event):
-    pass # Мы просто слушаем, ничего не делаем
-
-async def keep_online_ultimate():
-    await client.connect()
-    if not await client.is_user_authorized():
-        print("❌ ОШИБКА: Сессия невалидна. Обнови SESSION!")
-        return
-
-    print("🚀 Запущен режим 'Real Device Emulation'...")
-    
+async def periodic_online():
+    print("🤖 Запуск цикличного режима...")
     while True:
         try:
-            # Имитируем активность "зашел в приложение"
-            async with client.action(types.InputPeerEmpty(), 'typing'):
-                # Обновляем основной статус
-                await client(functions.account.UpdateStatusRequest(offline=False))
-                
-                # Запрашиваем конфигурацию (как это делает приложение при старте)
-                await client(functions.help.GetConfigRequest())
-                
-                # Запрашиваем состояние уведомлений
-                await client(functions.account.GetNotifySettingsRequest(
-                    peer=types.InputNotifyUsers()
-                ))
-
-            # Ждем рандомное время
-            await asyncio.sleep(random.randint(20, 40))
+            # Проверяем подключение
+            if not client.is_connected():
+                await client.connect()
             
+            if not await client.is_user_authorized():
+                print("❌ Ошибка: Сессия SESSION не подходит!")
+                return
+
+            # ФАЗА: ОНЛАЙН (зашли на 2-3 минуты)
+            online_time = random.randint(120, 180)
+            print(f"📱 Зашли в сеть на {online_time} сек.")
+            
+            start_mark = asyncio.get_event_loop().time()
+            while asyncio.get_event_loop().time() - start_mark < online_time:
+                await client(functions.account.UpdateStatusRequest(offline=False))
+                # Имитируем легкую активность
+                await client.get_me() 
+                await asyncio.sleep(30)
+
+            # ФАЗА: ОФФЛАЙН (ушли на 10-15 минут)
+            await client(functions.account.UpdateStatusRequest(offline=True))
+            # Отключаемся, чтобы не висеть мертвым грузом
+            await client.disconnect()
+            
+            wait_time = random.randint(600, 900)
+            print(f"💤 Ушли в оффлайн на {wait_time // 60} мин.")
+            await asyncio.sleep(wait_time)
+
         except Exception as e:
-            print(f"Ошибка активности: {e}")
-            await asyncio.sleep(20)
+            print(f"⚠️ Ошибка: {e}. Перезапуск через минуту...")
+            await asyncio.sleep(60)
 
 async def handle(request):
-    return web.Response(text="Система эмуляции активна")
+    return web.Response(text="Скрипт периодического онлайна активен.")
 
 async def main():
-    # Запуск веб-заглушки для Render
+    # 1. Запускаем веб-сервер для Render (чтобы не было ошибок порта)
     app = web.Application()
     app.router.add_get('/', handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    await web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 8080))).start()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"🌐 Веб-сервер готов на порту {port}")
 
-    # Запускаем фоновый цикл и режим прослушивания
-    await asyncio.gather(
-        keep_online_ultimate(),
-        client.run_until_disconnected()
-    )
+    # 2. Запускаем основной цикл
+    await periodic_online()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
