@@ -1,7 +1,7 @@
 import asyncio
 import os
 import random
-from telethon import TelegramClient, functions, types
+from telethon import TelegramClient, events, functions, types
 from telethon.sessions import StringSession
 from aiohttp import web
 
@@ -12,60 +12,57 @@ SESSION = os.environ.get("SESSION", "")
 
 client = TelegramClient(StringSession(SESSION), API_ID, API_HASH)
 
-async def periodic_online_logic():
+# 1. ОБЯЗАТЕЛЬНО: Слушаем любые события (это открывает постоянный поток данных)
+@client.on(events.NewMessage)
+async def handler(event):
+    pass # Мы просто слушаем, ничего не делаем
+
+async def keep_online_ultimate():
     await client.connect()
     if not await client.is_user_authorized():
-        print("❌ ОШИБКА: SESSION невалидна. Проверь переменные в Render!")
+        print("❌ ОШИБКА: Сессия невалидна. Обнови SESSION!")
         return
 
-    print("✅ Скрипт авторизован. Переходим в режим периодического онлайна.")
+    print("🚀 Запущен режим 'Real Device Emulation'...")
     
     while True:
         try:
-            # --- ФАЗА 1: ОФФЛАЙН ---
-            # Спим от 10 до 20 минут (в секундах)
-            sleep_time = random.randint(600, 1200) 
-            print(f"💤 Уходим в оффлайн на {sleep_time // 60} минут...")
-            await asyncio.sleep(sleep_time)
-
-            # --- ФАЗА 2: ОНЛАЙН ---
-            # Будем "в сети" от 2 до 4 минут
-            online_duration = random.randint(120, 240)
-            print(f"📱 Заходим в сеть на {online_duration} секунд...")
-            
-            end_time = asyncio.get_event_loop().time() + online_duration
-            while asyncio.get_event_loop().time() < end_time:
-                # Обновляем статус
+            # Имитируем активность "зашел в приложение"
+            async with client.action(types.InputPeerEmpty(), 'typing'):
+                # Обновляем основной статус
                 await client(functions.account.UpdateStatusRequest(offline=False))
-                # Имитируем просмотр диалогов
-                await client(functions.messages.GetDialogsRequest(
-                    offset_date=None, offset_id=0, 
-                    offset_peer=types.InputPeerEmpty(), limit=1, hash=0
-                ))
-                # Держим статус каждые 30 секунд внутри активной фазы
-                await asyncio.sleep(30)
                 
-            print("🚶 Выходим из приложения...")
-            # Явно говорим серверу, что мы оффлайн (по желанию)
-            await client(functions.account.UpdateStatusRequest(offline=True))
+                # Запрашиваем конфигурацию (как это делает приложение при старте)
+                await client(functions.help.GetConfigRequest())
+                
+                # Запрашиваем состояние уведомлений
+                await client(functions.account.GetNotifySettingsRequest(
+                    peer=types.InputNotifyUsers()
+                ))
 
+            # Ждем рандомное время
+            await asyncio.sleep(random.randint(20, 40))
+            
         except Exception as e:
-            print(f"⚠️ Ошибка в цикле: {e}")
-            await asyncio.sleep(60)
+            print(f"Ошибка активности: {e}")
+            await asyncio.sleep(20)
 
 async def handle(request):
-    return web.Response(text="Бот имитирует периодический онлайн.")
+    return web.Response(text="Система эмуляции активна")
 
 async def main():
-    # Запуск веб-сервера (обязательно для Render)
+    # Запуск веб-заглушки для Render
     app = web.Application()
     app.router.add_get('/', handle)
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 8080))).start()
 
-    # Запускаем логику
-    await periodic_online_logic()
+    # Запускаем фоновый цикл и режим прослушивания
+    await asyncio.gather(
+        keep_online_ultimate(),
+        client.run_until_disconnected()
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
